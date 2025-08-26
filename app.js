@@ -1,13 +1,16 @@
+import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
 import connectDB from './config/db.js'
 import authRoutes from './routes/authRoutes.js'
 
 const app = express()
-const port = process.env.NEXT_PUBLIC_API_BASE_URL
+const port = 5000
 
 dotenv.config()
 connectDB()
+
+app.use(cors({ origin: 'http://localhost:3000', credentials: true }))
 
 //Middlewares
 app.use(express.json())
