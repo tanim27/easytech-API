@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt'
+import jwt from 'jsonwebtoken'
 import User from '../models/User.js'
 
 // Regex patterns
@@ -64,12 +65,22 @@ export const SignUp = async (req, res) => {
 
 		await newUser.save()
 
+		const token = jwt.sign(
+			{
+				id: newUser._id,
+			},
+			process.env.JWT_SECRET_KEY,
+			{
+				expiresIn: '1h',
+			},
+		)
+
 		const userResponse = { ...newUser._doc }
 		delete userResponse.password
 
 		return res
 			.status(201)
-			.json({ message: 'Registered successfully', user: userResponse })
+			.json({ message: 'Registered successfully', token, user: userResponse })
 	} catch (err) {
 		if (err.name === 'ValidationError') {
 			const messages = Object.values(err.errors).map((e) => e.message)
@@ -95,14 +106,24 @@ export const Login = async (req, res) => {
 		}
 
 		const isMatch = await bcrypt.compare(password, user.password)
-
 		if (!isMatch) {
-			return res.status(400).json({ message: 'password is incorrect' })
+			return res.status(400).json({ message: 'Password is incorrect' })
 		}
 
-		return res.status(200).json({ user, message: 'Logged in successfully' })
+		const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, {
+			expiresIn: '1h',
+		})
+
+		// remove password from response
+		const { password: pwd, ...userData } = user._doc
+
+		return res.status(200).json({
+			message: 'Logged in successfully',
+			token,
+			user: userData,
+		})
 	} catch (err) {
-		console.log(err.message)
+		console.error(err.message)
 		return res
 			.status(500)
 			.json({ message: 'Server error', details: err.message })
