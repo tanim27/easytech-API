@@ -68,6 +68,7 @@ export const SignUp = async (req, res) => {
 		const token = jwt.sign(
 			{
 				id: newUser._id,
+				email: newUser.email,
 			},
 			process.env.JWT_SECRET_KEY,
 			{
@@ -114,7 +115,6 @@ export const Login = async (req, res) => {
 			expiresIn: '1h',
 		})
 
-		// remove password from response
 		const { password: pwd, ...userData } = user._doc
 
 		return res.status(200).json({
