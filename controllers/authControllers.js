@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
+import nodemailer from 'nodemailer'
 import User from '../models/User.js'
 
 // Regex patterns
@@ -10,8 +11,9 @@ const passwordRegex =
 
 export const SignUp = async (req, res) => {
 	try {
-		const { name, email, contact, password } = req.body
+		const { name, email, contact, password, confirmPassword } = req.body
 
+		// Name validation
 		if (!name || !name.trim())
 			return res.status(400).json({ message: 'Name is required.' })
 		if (name.length < 3 || name.length > 50) {
@@ -19,14 +21,17 @@ export const SignUp = async (req, res) => {
 				.status(400)
 				.json({ message: 'Name must be between in 3 and 50 characters.' })
 		}
+
 		if (!email || !emailRegex.test(email))
 			return res
 				.status(400)
 				.json({ message: 'Please enter a valid email address.' })
+
 		if (!contact || !contactRegex.test(contact))
 			return res
 				.status(400)
 				.json({ message: 'Please enter a valid Bangladeshi contact number.' })
+
 		if (!password || password.length < 6 || password.length > 64) {
 			return res
 				.status(400)
@@ -37,6 +42,10 @@ export const SignUp = async (req, res) => {
 				message:
 					'Password must contain at least one uppercase letter, one lowercase letter, and one special character.',
 			})
+		}
+
+		if (password !== confirmPassword) {
+			return res.status(400).json({ message: 'Passwords do not match.' })
 		}
 
 		const existingUser = await User.findOne({ $or: [{ email }, { contact }] })
@@ -71,11 +80,8 @@ export const SignUp = async (req, res) => {
 				email: newUser.email,
 			},
 			process.env.JWT_SECRET_KEY,
-			{
-				expiresIn: '1h',
-			},
+			{ expiresIn: '1h' },
 		)
-
 		const userResponse = { ...newUser._doc }
 		delete userResponse.password
 
@@ -127,5 +133,52 @@ export const Login = async (req, res) => {
 		return res
 			.status(500)
 			.json({ message: 'Server error', details: err.message })
+	}
+}
+
+export const ForgotPassword = async (req, res) => {
+	try {
+		const { email } = req.body
+
+		if (!email) {
+			return res.status(400).send({ message: 'Please provide a valid email' })
+		}
+
+		const user = await User.findOne({ email })
+
+		if (!user) {
+			return res.status(400).send({ message: 'User not found please register' })
+		}
+
+		const token = jwt.sign({ email }, process.env.JWT_SECRET_KEY, {
+			expiresIn: '1h',
+		})
+
+		const transporter = nodemailer.createTransport({
+			service: 'gmail',
+			secure: true,
+			auth: {
+				user: process.env.MY_GMAIL,
+				pass: process.env.MY_PASSWORD,
+			},
+		})
+
+		const resetURL = `${process.env.NEXT_PUBLIC_FRONTEND_URL}/reset-password/${token}`
+
+		const receiver = {
+			from: process.env.MY_GMAIL,
+			to: email,
+			subject: 'Password Reset Request',
+			text: `Click on this link to generate your new password: ${resetURL}`,
+		}
+
+		await transporter.sendMail(receiver)
+
+		return res.status(200).send({
+			message: 'Password reset link send successfully on your email account',
+		})
+	} catch (error) {
+		console.error(error)
+		return res.status(500).send({ message: 'Something went wrong' })
 	}
 }
