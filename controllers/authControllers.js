@@ -1,7 +1,9 @@
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 import nodemailer from 'nodemailer'
+import OTP from '../models/OTP.js'
 import User from '../models/User.js'
+import SendOTP from './../utils/SendOTP.js'
 
 // Regex patterns
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -13,7 +15,6 @@ export const SignUp = async (req, res) => {
 	try {
 		const { name, email, contact, password, confirmPassword } = req.body
 
-		// Name validation
 		if (!name || !name.trim())
 			return res.status(400).json({ message: 'Name is required.' })
 		if (name.length < 3 || name.length > 50) {
@@ -87,7 +88,7 @@ export const SignUp = async (req, res) => {
 
 		return res
 			.status(201)
-			.json({ message: 'Registered successfully', token, user: userResponse })
+			.json({ message: 'Registered successfully.', token, user: userResponse })
 	} catch (err) {
 		if (err.name === 'ValidationError') {
 			const messages = Object.values(err.errors).map((e) => e.message)
@@ -96,7 +97,7 @@ export const SignUp = async (req, res) => {
 		console.error(err)
 		return res
 			.status(500)
-			.json({ message: 'Server error', details: err.message })
+			.json({ message: 'Internal server error.', details: err.message })
 	}
 }
 
@@ -109,12 +110,12 @@ export const Login = async (req, res) => {
 		})
 
 		if (!user) {
-			return res.status(400).json({ message: 'User not found' })
+			return res.status(400).json({ message: 'User not found.' })
 		}
 
 		const isMatch = await bcrypt.compare(password, user.password)
 		if (!isMatch) {
-			return res.status(400).json({ message: 'Password is incorrect' })
+			return res.status(400).json({ message: 'Password is incorrect.' })
 		}
 
 		const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, {
@@ -124,7 +125,7 @@ export const Login = async (req, res) => {
 		const { password: pwd, ...userData } = user._doc
 
 		return res.status(200).json({
-			message: 'Logged in successfully',
+			message: 'Logged in successfully.',
 			token,
 			user: userData,
 		})
@@ -132,22 +133,24 @@ export const Login = async (req, res) => {
 		console.error(err.message)
 		return res
 			.status(500)
-			.json({ message: 'Server error', details: err.message })
+			.json({ message: 'Internal server error.', details: err.message })
 	}
 }
 
-export const ForgotPassword = async (req, res) => {
+export const PasswordResetWithEmail = async (req, res) => {
 	try {
 		const { email } = req.body
 
 		if (!email) {
-			return res.status(400).send({ message: 'Please provide a valid email' })
+			return res.status(400).send({ message: 'Please provide a valid email.' })
 		}
 
 		const user = await User.findOne({ email })
 
 		if (!user) {
-			return res.status(400).send({ message: 'User not found please register' })
+			return res
+				.status(400)
+				.send({ message: 'User not found. Please register first.' })
 		}
 
 		const token = jwt.sign({ email }, process.env.JWT_SECRET_KEY, {
@@ -168,17 +171,80 @@ export const ForgotPassword = async (req, res) => {
 		const receiver = {
 			from: process.env.MY_GMAIL,
 			to: email,
-			subject: 'Password Reset Request',
+			subject: 'Password Reset Request.',
 			text: `Click on this link to generate your new password: ${resetURL}`,
 		}
 
 		await transporter.sendMail(receiver)
 
 		return res.status(200).send({
-			message: 'Password reset link send successfully on your email account',
+			message: 'Password reset link send successfully on your email account.',
 		})
 	} catch (error) {
 		console.error(error)
-		return res.status(500).send({ message: 'Something went wrong' })
+		return res
+			.status(500)
+			.send({ message: 'Internal server error.', details: err.message })
+	}
+}
+
+export const PasswordResetWithOTP = async (req, res) => {
+	try {
+		const { contact } = req.body
+
+		const user = await User.findOne({ contact })
+		if (!user) {
+			return res.status(404).json({ message: 'User not found.' })
+		}
+
+		const otp = Math.floor(100000 + Math.random() * 900000)
+		await OTP.findOneAndUpdate(
+			{ contact },
+			{ otp, createdAt: new Date() },
+			{ upsert: true, new: true },
+		)
+
+		await SendOTP(contact, otp)
+
+		return res.json({ message: 'OTP sent successfully.' })
+	} catch (err) {
+		console.error(err)
+		res
+			.status(500)
+			.json({ message: 'Internal server error.', details: err.message })
+	}
+}
+
+export const verifyOtp = async (req, res) => {
+	try {
+		const { contact, otp } = req.body
+
+		const otpEntry = await OTP.findOne({ contact })
+		if (!otpEntry || otpEntry.otp !== otp) {
+			return res.status(400).json({ message: 'Invalid OTP.' })
+		}
+
+		const expiry = new Date(otpEntry.createdAt)
+		expiry.setMinutes(expiry.getMinutes() + 3)
+		if (new Date() > expiry) {
+			return res.status(400).json({ message: 'OTP expired.' })
+		}
+
+		const resetToken = jwt.sign({ contact }, process.env.JWT_SECRET_KEY, {
+			expiresIn: '3m',
+		})
+
+		await OTP.deleteOne({ contact })
+
+		return res.json({
+			message: 'OTP verified',
+			resetUrl: `/reset-password/${resetToken}`,
+			resetToken,
+		})
+	} catch (err) {
+		console.error(err)
+		res
+			.status(500)
+			.json({ message: 'Internal server error.', details: err.message })
 	}
 }

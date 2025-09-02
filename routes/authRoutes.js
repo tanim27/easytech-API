@@ -1,7 +1,8 @@
 import express from 'express'
 import {
-	ForgotPassword,
 	Login,
+	PasswordResetWithEmail,
+	PasswordResetWithOTP,
 	SignUp,
 } from '../controllers/authControllers.js'
 
@@ -9,5 +10,7 @@ const router = express.Router()
 
 router.post('/signup', SignUp)
 router.post('/login', Login)
-router.post('/forgot-password/email', ForgotPassword)
+router.post('/password-reset-request/email', PasswordResetWithEmail)
+router.post('/password-reset-request/otp', PasswordResetWithOTP)
+
 export default router
