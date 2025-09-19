@@ -11,7 +11,7 @@ const passwordRegex =
 
 export const SignUp = async (req, res) => {
 	try {
-		const { name, email, contact, password, confirmPassword } = req.body
+		const { name, email, contact, password, confirmPassword, role } = req.body
 
 		if (!name || !name.trim())
 			return res.status(400).json({ message: 'Name is required.' })
@@ -69,6 +69,7 @@ export const SignUp = async (req, res) => {
 			email: email.toLowerCase(),
 			contact,
 			password: hashedPassword,
+			role,
 		})
 
 		await newUser.save()
@@ -77,6 +78,7 @@ export const SignUp = async (req, res) => {
 			{
 				id: newUser._id,
 				email: newUser.email,
+				role: newUser.role,
 			},
 			process.env.JWT_SECRET_KEY,
 			{ expiresIn: '1h' },
@@ -116,9 +118,13 @@ export const Login = async (req, res) => {
 			return res.status(400).json({ message: 'Password is incorrect.' })
 		}
 
-		const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, {
-			expiresIn: '1h',
-		})
+		const token = jwt.sign(
+			{ id: user._id, role: user.role },
+			process.env.JWT_SECRET_KEY,
+			{
+				expiresIn: '1h',
+			},
+		)
 
 		const { password: pwd, ...userData } = user._doc
 

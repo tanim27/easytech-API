@@ -41,6 +41,11 @@ const userSchema = new Schema(
 				'Password must contain at least one uppercase, one lowercase, and one special character',
 			],
 		},
+		role: {
+			type: String,
+			enum: ['admin', 'user'],
+			default: 'user',
+		},
 	},
 	{ timestamps: true },
 )
