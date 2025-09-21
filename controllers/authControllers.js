@@ -1,9 +1,7 @@
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 import nodemailer from 'nodemailer'
-import OTP from '../models/OTP.js'
 import User from '../models/User.js'
-import SendOTP from './../utils/SendOTP.js'
 
 // Regex patterns
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -185,66 +183,5 @@ export const PasswordResetWithEmail = async (req, res) => {
 		return res
 			.status(500)
 			.send({ message: 'Internal server error.', details: err.message })
-	}
-}
-
-export const PasswordResetWithOTP = async (req, res) => {
-	try {
-		const { contact } = req.body
-
-		const user = await User.findOne({ contact })
-		if (!user) {
-			return res.status(404).json({ message: 'User not found.' })
-		}
-
-		const otp = Math.floor(100000 + Math.random() * 900000)
-		await OTP.findOneAndUpdate(
-			{ contact },
-			{ otp, createdAt: new Date() },
-			{ upsert: true, new: true },
-		)
-
-		await SendOTP(contact, otp)
-
-		return res.json({ message: 'OTP sent successfully.' })
-	} catch (err) {
-		console.error(err)
-		res
-			.status(500)
-			.json({ message: 'Internal server error.', details: err.message })
-	}
-}
-
-export const verifyOtp = async (req, res) => {
-	try {
-		const { contact, otp } = req.body
-
-		const otpEntry = await OTP.findOne({ contact })
-		if (!otpEntry || otpEntry.otp !== otp) {
-			return res.status(400).json({ message: 'Invalid OTP.' })
-		}
-
-		const expiry = new Date(otpEntry.createdAt)
-		expiry.setMinutes(expiry.getMinutes() + 3)
-		if (new Date() > expiry) {
-			return res.status(400).json({ message: 'OTP expired.' })
-		}
-
-		const resetToken = jwt.sign({ contact }, process.env.JWT_SECRET_KEY, {
-			expiresIn: '3m',
-		})
-
-		await OTP.deleteOne({ contact })
-
-		return res.json({
-			message: 'OTP verified',
-			resetUrl: `/reset-password/${resetToken}`,
-			resetToken,
-		})
-	} catch (err) {
-		console.error(err)
-		res
-			.status(500)
-			.json({ message: 'Internal server error.', details: err.message })
 	}
 }
