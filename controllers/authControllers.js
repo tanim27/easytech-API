@@ -11,7 +11,7 @@ const passwordRegex =
 
 export const SignUp = async (req, res) => {
 	try {
-		const { name, email, contact, password, confirmPassword } = req.body
+		const { name, email, contact, password, confirmPassword, role } = req.body
 
 		if (!name || !name.trim())
 			return res.status(400).json({ message: 'Name is required.' })
@@ -69,6 +69,7 @@ export const SignUp = async (req, res) => {
 			email: email.toLowerCase(),
 			contact,
 			password: hashedPassword,
+			role,
 		})
 
 		await newUser.save()
@@ -77,6 +78,7 @@ export const SignUp = async (req, res) => {
 			{
 				id: newUser._id,
 				email: newUser.email,
+				role: newUser.role,
 			},
 			process.env.JWT_SECRET_KEY,
 			{ expiresIn: '1h' },
@@ -116,9 +118,13 @@ export const Login = async (req, res) => {
 			return res.status(400).json({ message: 'Password is incorrect.' })
 		}
 
-		const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, {
-			expiresIn: '1h',
-		})
+		const token = jwt.sign(
+			{ id: user._id, role: user.role },
+			process.env.JWT_SECRET_KEY,
+			{
+				expiresIn: '1h',
+			},
+		)
 
 		const { password: pwd, ...userData } = user._doc
 
@@ -135,12 +141,12 @@ export const Login = async (req, res) => {
 	}
 }
 
-export const PasswordResetWithEmail = async (req, res) => {
+export const PasswordResetRequestWithEmail = async (req, res) => {
 	try {
 		const { email } = req.body
 
 		if (!email) {
-			return res.status(400).send({ message: 'Please provide a valid email.' })
+			return res.status(400).json({ message: 'Please provide a valid email.' })
 		}
 
 		const user = await User.findOne({ email })
@@ -148,7 +154,7 @@ export const PasswordResetWithEmail = async (req, res) => {
 		if (!user) {
 			return res
 				.status(400)
-				.send({ message: 'User not found. Please register first.' })
+				.json({ message: 'User not found. Please register first.' })
 		}
 
 		const token = jwt.sign({ email }, process.env.JWT_SECRET_KEY, {
@@ -175,13 +181,53 @@ export const PasswordResetWithEmail = async (req, res) => {
 
 		await transporter.sendMail(receiver)
 
-		return res.status(200).send({
+		return res.status(200).json({
 			message: 'Password reset link send successfully on your email account.',
 		})
 	} catch (error) {
 		console.error(error)
 		return res
 			.status(500)
-			.send({ message: 'Internal server error.', details: err.message })
+			.json({ message: 'Internal server error.', details: err.message })
+	}
+}
+
+export const PasswordResetWithEmail = async (req, res) => {
+	try {
+		const { token } = req.params
+		const { newPassword, confirmNewPassword } = req.body
+
+		const decode = jwt.verify(token, process.env.JWT_SECRET_KEY)
+		const user = await User.findOne({ email: decode.email })
+
+		if (!user) {
+			return res.status(404).json({ message: 'User not found' })
+		}
+
+		if (!newPassword) {
+			return res.status(400).json({ message: 'Please provide new password' })
+		}
+
+		if (!confirmNewPassword) {
+			return res
+				.status(400)
+				.json({ message: 'Please provide confirm password' })
+		}
+
+		if (newPassword !== confirmNewPassword) {
+			return res.status(400).json({ message: 'Passwords do not match.' })
+		}
+
+		const salt = await bcrypt.genSalt(10)
+		const newHashedPassword = await bcrypt.hash(newPassword, salt)
+
+		user.password = newHashedPassword
+		await user.save()
+
+		return res.status(200).json({ message: 'Password reset successful.' })
+	} catch (error) {
+		return res
+			.status(500)
+			.json({ message: 'Internal server error.', details: err.message })
 	}
 }
